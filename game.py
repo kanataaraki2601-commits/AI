@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Terminal-based adventure game: Maze Runner.
 
 The player explores a grid, gathers artifacts, avoids traps, and escapes
@@ -6,9 +7,10 @@ before being caught by a roaming guardian.
 
 from __future__ import annotations
 
+import argparse
 import random
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 
 Position = Tuple[int, int]
@@ -495,16 +497,31 @@ def check_victory(player: Player, exit_tile: Position) -> bool:
     return False
 
 
-def play() -> None:
+def play(
+    command_provider: Optional[
+        Callable[[Player, Guardian, List[Position], List[Position], Position], str]
+    ] = None,
+    *,
+    seed: Optional[int] = None,
+    max_turns: Optional[int] = None,
+) -> None:
+    if seed is not None:
+        random.seed(seed)
+
     intro()
     player, guardian, treasures, traps, exit_tile = initial_state()
+    turns_taken = 0
 
     while player.health > 0:
         board = build_board(player, guardian, treasures, traps, exit_tile)
         display_board(board)
         status(player, guardian, treasures, exit_tile)
 
-        command = input("Your move: ").strip().lower()
+        if command_provider is not None:
+            command = command_provider(player, guardian, treasures, traps, exit_tile)
+            print(f"Demo move: {command}")
+        else:
+            command = input("Your move: ").strip().lower()
         if command == "q":
             print("You sit down and accept your fate. Game over.")
             return
@@ -513,8 +530,17 @@ def play() -> None:
                 mystic_pulse(player, treasures, exit_tile, guardian)
             else:
                 print("Your mystic pulse is spent. The maze remains silent.")
+            if command_provider is not None:
+                turns_taken += 1
             guardian_turn(guardian, player, traps, treasures, exit_tile)
             if player.health <= 0:
+                break
+            if (
+                command_provider is not None
+                and max_turns is not None
+                and turns_taken >= max_turns
+            ):
+                print("\nDemo turn limit reached. Ending the run.")
                 break
             continue
         if command not in DIRECTIONS:
@@ -541,6 +567,12 @@ def play() -> None:
         if player.health <= 0:
             break
 
+        turns_taken += 1
+        if command_provider is not None and max_turns is not None:
+            if turns_taken >= max_turns:
+                print("\nDemo turn limit reached. Ending the run.")
+                break
+
     print("\nThe labyrinth claims another adventurer...")
     print(f"Final score: {player.score}")
     print("Revealing the final layout:")
@@ -548,6 +580,91 @@ def play() -> None:
     display_board(final_board, reveal=True)
 
 
+def demo_command_provider_factory() -> Callable[
+    [Player, Guardian, List[Position], List[Position], Position],
+    str,
+]:
+    """Create a simple AI that showcases the game without user input."""
+
+    pulse_used = False
+
+    def provider(
+        player: Player,
+        guardian: Guardian,
+        treasures: List[Position],
+        traps: List[Position],
+        exit_tile: Position,
+    ) -> str:
+        nonlocal pulse_used
+
+        if player.pulse_available and not pulse_used:
+            pulse_used = True
+            return "p"
+
+        targets = treasures or [exit_tile]
+        target = min(targets, key=lambda pos: manhattan_distance(player.position, pos))
+
+        px, py = player.position
+        tx, ty = target
+        candidate_moves: List[str] = []
+
+        if tx < px:
+            candidate_moves.append("w")
+        if tx > px:
+            candidate_moves.append("s")
+        if ty < py:
+            candidate_moves.append("a")
+        if ty > py:
+            candidate_moves.append("d")
+
+        random.shuffle(candidate_moves)
+        candidate_moves.extend([move for move in DIRECTIONS if move not in candidate_moves])
+
+        for move in candidate_moves:
+            nx, ny = px + DIRECTIONS[move][0], py + DIRECTIONS[move][1]
+            if within_bounds((nx, ny)):
+                return move
+
+        return "q"
+
+    return provider
+
+
+def run_demo(seed: Optional[int], max_turns: int) -> None:
+    """Run an automated demo session for quick previews."""
+
+    if seed is None:
+        random.seed()
+    provider = demo_command_provider_factory()
+    play(command_provider=provider, seed=seed, max_turns=max_turns)
+
+
 if __name__ == "__main__":
-    random.seed()
-    play()
+    parser = argparse.ArgumentParser(description="Maze Runner terminal adventure")
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Run an automated demo instead of the interactive game.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Seed the random number generator for reproducible runs.",
+    )
+    parser.add_argument(
+        "--turns",
+        type=int,
+        default=60,
+        help="Maximum number of turns the demo should play before exiting.",
+    )
+    args = parser.parse_args()
+
+    if args.demo:
+        run_demo(args.seed, args.turns)
+    else:
+        if args.seed is not None:
+            random.seed(args.seed)
+        else:
+            random.seed()
+        play()

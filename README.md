@@ -13,6 +13,19 @@ Use `w`, `a`, `s`, and `d` to move, `p` to unleash a one-time mystic pulse that
 reveals nearby secrets, and `q` to quit. Collect relics before reaching the
 exit to escape successfully. Beware of traps and the guardian!
 
+### Quick demo mode
+
+If you just want to *watch* a run without providing interactive input, launch
+the automated demo:
+
+```bash
+python game.py --demo
+```
+
+Optional flags such as `--seed 42` (for reproducible layouts) and `--turns 40`
+(to cap the number of demo turns) let you tailor the showcase when recording or
+testing the game.
+
 ### What Makes This Run Interesting
 
 * **Living relics** – every relic you grab grants an immediate boon such as
